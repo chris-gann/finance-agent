@@ -19,6 +19,7 @@ from sync_transactions import start_scheduler, stop_scheduler
 from telegram_bot import create_telegram_app
 from web_app import run_web_app
 from plaid_client import sync_transactions, load_access_tokens
+from config import WEB_PORT
 
 # Configure logging
 logging.basicConfig(
@@ -63,11 +64,11 @@ def run_telegram_in_thread():
 
 def main():
     """Main entry point for the application."""
-    print("""
+    print(f"""
     ╔═══════════════════════════════════════╗
     ║       Personal Spend Tracker          ║
     ╠═══════════════════════════════════════╣
-    ║  Web Dashboard: http://localhost:5001 ║
+    ║  Web Dashboard: http://localhost:{WEB_PORT:<5}║
     ║  Telegram Bot:  Active                ║
     ╚═══════════════════════════════════════╝
     """)
@@ -89,7 +90,7 @@ def main():
         stats = sync_transactions()
         logger.info(f"Initial sync: {stats['added']} transactions added")
     else:
-        logger.info("No linked accounts. Visit http://localhost:5000 to link your bank account.")
+        logger.info(f"No linked accounts. Visit http://localhost:{WEB_PORT} to link your bank account.")
 
     # Start background scheduler
     start_scheduler()

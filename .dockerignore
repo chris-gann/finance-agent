@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+*.pyc
+__pycache__
+*.db
+plaid_tokens.json
+.DS_Store
+*.md
+.github
