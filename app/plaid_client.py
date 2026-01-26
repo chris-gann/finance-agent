@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Set
 
 import plaid
 from plaid.api import plaid_api
@@ -10,11 +10,12 @@ from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUse
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from plaid.model.sandbox_public_token_create_request import SandboxPublicTokenCreateRequest
+from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.products import Products
 from plaid.model.country_code import CountryCode
 
-from config import PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV, ACCESS_TOKENS_PATH
-from database import upsert_transaction, update_sync_state, get_sync_cursor
+from .config import PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV, ACCESS_TOKENS_PATH
+from .database import upsert_transaction, update_sync_state, get_sync_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +143,34 @@ def create_sandbox_token() -> Optional[dict]:
         return None
 
 
+def get_checking_account_ids(access_token: str) -> Set[str]:
+    """Get account IDs for checking accounts only."""
+    client = get_plaid_client()
+
+    try:
+        request = AccountsGetRequest(access_token=access_token)
+        response = client.accounts_get(request)
+
+        checking_ids = set()
+        for account in response['accounts']:
+            # Log all accounts for debugging
+            subtype = str(account['subtype']) if account['subtype'] else 'None'
+            logger.info(f"Found account: {account['name']} | type={account['type']} | subtype={subtype}")
+
+            # Filter for checking accounts only (handle both string and enum)
+            if subtype.lower() == 'checking':
+                checking_ids.add(account['account_id'])
+                logger.info(f"  -> Including as checking account")
+
+        return checking_ids
+    except plaid.ApiException as e:
+        error_response = json.loads(e.body)
+        logger.error(f"Error fetching accounts: {error_response['error_code']}")
+        return set()
+
+
 def sync_transactions() -> dict:
-    """Sync transactions from all linked accounts."""
+    """Sync transactions from checking accounts only (spending only, no deposits)."""
     client = get_plaid_client()
     access_tokens = load_access_tokens()
 
@@ -151,11 +178,16 @@ def sync_transactions() -> dict:
         logger.warning("No access tokens found. Please link an account first.")
         return {'added': 0, 'modified': 0, 'removed': 0}
 
-    stats = {'added': 0, 'modified': 0, 'removed': 0}
+    stats = {'added': 0, 'modified': 0, 'removed': 0, 'skipped_deposits': 0, 'skipped_non_checking': 0}
     cursor = get_sync_cursor()
 
     for token_data in access_tokens:
         access_token = token_data['access_token']
+
+        # Get checking account IDs for this token
+        checking_account_ids = get_checking_account_ids(access_token)
+        if not checking_account_ids:
+            logger.warning("No checking accounts found for this token")
 
         try:
             # Initial sync request
@@ -168,16 +200,27 @@ def sync_transactions() -> dict:
 
             # Process added transactions
             for txn in response['added']:
-                if not txn['pending']:  # Skip pending transactions
-                    upsert_transaction(
-                        transaction_id=txn['transaction_id'],
-                        account_id=txn['account_id'],
-                        amount=txn['amount'],
-                        date=str(txn['date']),
-                        merchant_name=txn['merchant_name'] or txn['name'] or 'Unknown',
-                        category=txn['category'][0] if txn['category'] else 'Uncategorized'
-                    )
-                    stats['added'] += 1
+                # Skip pending transactions
+                if txn['pending']:
+                    continue
+                # Skip non-checking accounts
+                if checking_account_ids and txn['account_id'] not in checking_account_ids:
+                    stats['skipped_non_checking'] += 1
+                    continue
+                # Skip deposits (negative amounts = money coming in)
+                if txn['amount'] <= 0:
+                    stats['skipped_deposits'] += 1
+                    continue
+
+                upsert_transaction(
+                    transaction_id=txn['transaction_id'],
+                    account_id=txn['account_id'],
+                    amount=txn['amount'],
+                    date=str(txn['date']),
+                    merchant_name=txn['merchant_name'] or txn['name'] or 'Unknown',
+                    category=txn['category'][0] if txn['category'] else 'Uncategorized'
+                )
+                stats['added'] += 1
 
             stats['modified'] += len(response['modified'])
             stats['removed'] += len(response['removed'])
@@ -191,16 +234,24 @@ def sync_transactions() -> dict:
                 response = client.transactions_sync(request)
 
                 for txn in response['added']:
-                    if not txn['pending']:
-                        upsert_transaction(
-                            transaction_id=txn['transaction_id'],
-                            account_id=txn['account_id'],
-                            amount=txn['amount'],
-                            date=str(txn['date']),
-                            merchant_name=txn['merchant_name'] or txn['name'] or 'Unknown',
-                            category=txn['category'][0] if txn['category'] else 'Uncategorized'
-                        )
-                        stats['added'] += 1
+                    if txn['pending']:
+                        continue
+                    if checking_account_ids and txn['account_id'] not in checking_account_ids:
+                        stats['skipped_non_checking'] += 1
+                        continue
+                    if txn['amount'] <= 0:
+                        stats['skipped_deposits'] += 1
+                        continue
+
+                    upsert_transaction(
+                        transaction_id=txn['transaction_id'],
+                        account_id=txn['account_id'],
+                        amount=txn['amount'],
+                        date=str(txn['date']),
+                        merchant_name=txn['merchant_name'] or txn['name'] or 'Unknown',
+                        category=txn['category'][0] if txn['category'] else 'Uncategorized'
+                    )
+                    stats['added'] += 1
 
                 stats['modified'] += len(response['modified'])
                 stats['removed'] += len(response['removed'])

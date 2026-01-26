@@ -14,12 +14,12 @@ import sys
 import asyncio
 from threading import Thread
 
-from database import init_db
-from sync_transactions import start_scheduler, stop_scheduler
-from telegram_bot import create_telegram_app
-from web_app import run_web_app
-from plaid_client import sync_transactions, load_access_tokens
-from config import WEB_PORT
+from app.database import init_db
+from app.sync_transactions import start_scheduler, stop_scheduler
+from app.telegram_bot import create_telegram_app
+from app.web_app import run_web_app
+from app.plaid_client import sync_transactions, load_access_tokens
+from app.config import WEB_PORT
 
 # Configure logging
 logging.basicConfig(

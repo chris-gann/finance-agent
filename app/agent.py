@@ -3,15 +3,15 @@ import logging
 from typing import Optional
 from anthropic import Anthropic
 
-from config import ANTHROPIC_API_KEY
-from database import (
+from .config import ANTHROPIC_API_KEY
+from .database import (
     find_transaction_by_merchant,
     add_adjustment,
     get_spend_totals,
     get_recent_transactions,
     get_transaction_by_id
 )
-from plaid_client import sync_transactions
+from .plaid_client import sync_transactions
 
 logger = logging.getLogger(__name__)
 

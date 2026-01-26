@@ -10,10 +10,10 @@ from telegram.ext import (
     filters
 )
 
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-from database import get_spend_totals, get_recent_transactions
-from agent import run_agent
-from plaid_client import sync_transactions
+from .config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from .database import get_spend_totals, get_recent_transactions
+from .agent import run_agent
+from .plaid_client import sync_transactions
 
 logger = logging.getLogger(__name__)
 

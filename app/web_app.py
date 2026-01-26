@@ -1,9 +1,9 @@
 import logging
 from flask import Flask, jsonify, request, render_template_string
 
-from config import WEB_HOST, WEB_PORT
-from database import get_spend_totals, get_recent_transactions
-from plaid_client import create_link_token, exchange_public_token, create_sandbox_token, load_access_tokens
+from .config import WEB_HOST, WEB_PORT
+from .database import get_spend_totals, get_recent_transactions
+from .plaid_client import create_link_token, exchange_public_token, create_sandbox_token, load_access_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +286,14 @@ def api_exchange_token():
 
     result = exchange_public_token(public_token)
     if result:
+        # Trigger immediate sync after linking account
+        from .plaid_client import sync_transactions
+        logger.info("Triggering immediate sync after account link...")
+        try:
+            stats = sync_transactions()
+            logger.info(f"Immediate sync complete: {stats}")
+        except Exception as e:
+            logger.error(f"Immediate sync failed: {e}")
         return jsonify({'success': True})
     return jsonify({'error': 'Failed to exchange token'}), 500
 
@@ -302,7 +310,7 @@ def api_create_sandbox():
 @app.route('/api/sync', methods=['POST'])
 def api_sync():
     """Trigger a manual sync."""
-    from plaid_client import sync_transactions
+    from .plaid_client import sync_transactions
     stats = sync_transactions()
     return jsonify(stats)
 
@@ -312,6 +320,29 @@ def api_recent():
     """Get recent transactions."""
     transactions = get_recent_transactions(10)
     return jsonify(transactions)
+
+
+@app.route('/api/reset', methods=['POST'])
+def api_reset():
+    """Clear all transactions and sync state, then re-sync fresh."""
+    from .database import get_connection
+    from .plaid_client import sync_transactions
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Clear transactions and sync state
+    cursor.execute("DELETE FROM transactions")
+    cursor.execute("DELETE FROM adjustments")
+    cursor.execute("DELETE FROM sync_state")
+    conn.commit()
+    conn.close()
+
+    logger.info("Database cleared, starting fresh sync...")
+
+    # Trigger fresh sync with new filters
+    stats = sync_transactions()
+    return jsonify({'success': True, 'cleared': True, 'sync_stats': stats})
 
 
 def run_web_app():

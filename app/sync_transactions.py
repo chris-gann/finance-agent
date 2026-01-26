@@ -1,8 +1,8 @@
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from config import SYNC_INTERVAL_MINUTES
-from plaid_client import sync_transactions, load_access_tokens
+from .config import SYNC_INTERVAL_MINUTES
+from .plaid_client import sync_transactions, load_access_tokens
 
 logger = logging.getLogger(__name__)
 

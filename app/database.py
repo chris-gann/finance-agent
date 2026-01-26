@@ -2,7 +2,11 @@ import sqlite3
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
-from config import DATABASE_PATH
+from zoneinfo import ZoneInfo
+from .config import DATABASE_PATH
+
+# Use Eastern Time for all date calculations
+EST = ZoneInfo('America/New_York')
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +101,12 @@ def get_effective_amount(transaction_id: str) -> float:
 
 
 def get_spend_totals() -> dict:
-    """Returns dict with day/week/month totals using effective amounts."""
+    """Returns dict with day/week/month totals using effective amounts (EST timezone)."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    today = datetime.now().date()
+    # Use Eastern Time for date calculations
+    today = datetime.now(EST).date()
     week_start = today - timedelta(days=today.weekday())
     month_start = today.replace(day=1)
 
@@ -192,8 +197,8 @@ def find_transaction_by_merchant(merchant_name: str, date_hint: Optional[str] = 
 
 
 def parse_date_hint(hint: str) -> Optional[str]:
-    """Parse natural language date hints."""
-    today = datetime.now().date()
+    """Parse natural language date hints (EST timezone)."""
+    today = datetime.now(EST).date()
     hint_lower = hint.lower().strip()
 
     if hint_lower in ['today', 'now']:
