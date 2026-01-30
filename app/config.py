@@ -26,5 +26,8 @@ ACCESS_TOKENS_PATH = os.path.join(DATA_DIR, "plaid_tokens.json")
 WEB_HOST = "0.0.0.0"
 WEB_PORT = int(os.getenv("PORT", "5001"))  # Railway sets PORT automatically
 
+# Plaid OAuth redirect URI (required for OAuth institutions like Amex)
+PLAID_REDIRECT_URI = os.getenv("PLAID_REDIRECT_URI")
+
 # Sync interval in minutes
 SYNC_INTERVAL_MINUTES = 15

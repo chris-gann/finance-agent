@@ -14,7 +14,7 @@ from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.products import Products
 from plaid.model.country_code import CountryCode
 
-from .config import PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV, ACCESS_TOKENS_PATH
+from .config import PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV, ACCESS_TOKENS_PATH, PLAID_REDIRECT_URI
 from .database import upsert_transaction, update_sync_state, get_sync_cursor
 
 logger = logging.getLogger(__name__)
@@ -76,13 +76,17 @@ def create_link_token() -> Optional[str]:
     """Create a Link token for Plaid Link initialization."""
     client = get_plaid_client()
 
-    request = LinkTokenCreateRequest(
+    link_params = dict(
         user=LinkTokenCreateRequestUser(client_user_id="user-1"),
         client_name="Spend Tracker",
         products=[Products("transactions")],
         country_codes=[CountryCode("US")],
         language="en"
     )
+    if PLAID_REDIRECT_URI:
+        link_params['redirect_uri'] = PLAID_REDIRECT_URI
+
+    request = LinkTokenCreateRequest(**link_params)
 
     try:
         response = client.link_token_create(request)

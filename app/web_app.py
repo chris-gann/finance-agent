@@ -174,6 +174,10 @@ DASHBOARD_TEMPLATE = """
         </div>
 
         <p class="sync-info">Last synced: {{ last_synced or 'Never' }}</p>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="link-btn" style="background: #3b82f6;" onclick="linkAccount()">+ Add Another Account</button>
+        </div>
         {% else %}
         <div class="no-accounts">
             <p>No bank accounts linked yet.</p>
@@ -205,9 +209,13 @@ DASHBOARD_TEMPLATE = """
             const response = await fetch('/api/link-token');
             const { link_token } = await response.json();
 
+            // Store link token for OAuth redirect flow
+            localStorage.setItem('link_token', link_token);
+
             const handler = Plaid.create({
                 token: link_token,
                 onSuccess: async (public_token, metadata) => {
+                    localStorage.removeItem('link_token');
                     await fetch('/api/exchange-token', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
@@ -216,7 +224,7 @@ DASHBOARD_TEMPLATE = """
                     window.location.reload();
                 },
                 onExit: (err, metadata) => {
-                    if (err) console.error('Plaid Link error:', err);
+                    if (err) console.error('Plaid Link error:', JSON.stringify(err), 'metadata:', JSON.stringify(metadata));
                 }
             });
             handler.open();
@@ -233,6 +241,38 @@ DASHBOARD_TEMPLATE = """
                 alert('Failed to create sandbox account: ' + data.error);
             }
         }
+
+        // Handle OAuth redirect from institutions like Amex
+        (function handleOAuthRedirect() {
+            const params = new URLSearchParams(window.location.search);
+            if (!params.has('oauth_state_id')) return;
+
+            // Reuse the same link token from the original flow
+            var linkToken = localStorage.getItem('link_token');
+            if (!linkToken) {
+                console.error('No link_token in localStorage for OAuth redirect');
+                return;
+            }
+
+            var handler = Plaid.create({
+                token: linkToken,
+                receivedRedirectUri: window.location.href,
+                onSuccess: function (public_token) {
+                    localStorage.removeItem('link_token');
+                    fetch('/api/exchange-token', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ public_token: public_token })
+                    }).then(function () {
+                        window.location.href = '/';
+                    });
+                },
+                onExit: function (err, metadata) {
+                    if (err) console.error('Plaid OAuth error:', JSON.stringify(err), 'metadata:', JSON.stringify(metadata));
+                }
+            });
+            handler.open();
+        })();
     </script>
 </body>
 </html>
